@@ -1,0 +1,224 @@
+---
+title: "Data Preparation"
+author: "Shaun Stearns"
+date: "1/29/2020"
+output: html_document
+---
+
+#Load Data from URL
+```{r}
+url <- "http://archive.ics.uci.edu/ml/machine-learning-databases/heart-disease/processed.cleveland.data"
+
+data <- read.csv(url, header=FALSE)
+```
+
+
+# Check Variable Names in List Format
+```{r}
+t(t(names(data)))
+```
+
+
+# Remove Spaces From Variable Names
+### Spaces Replaced with "."
+```{r}
+names(BigBoroughs)<-make.names(names(BigBoroughs),unique = TRUE)
+t(t(names(BigBoroughs)))
+```
+
+# Assigning Column Names if Needed
+```{r}
+colnames(data) <- c(
+  "age",
+  "sex",# 0 = female, 1 = male
+  "cp", # chest pain 
+  # 1 = typical angina, 
+  # 2 = atypical angina, 
+  # 3 = non-anginal pain, 
+  # 4 = asymptomatic
+  "trestbps", # resting blood pressure (in mm Hg)
+  "chol", # serum cholestoral in mg/dl
+  "fbs",  # fasting blood sugar if less than 120 mg/dl, 1 = TRUE, 0 = FALSE
+  "restecg", # resting electrocardiographic results
+  # 1 = normal
+  # 2 = having ST-T wave abnormality
+  # 3 = showing probable or definite left ventricular hypertrophy
+  "thalach", # maximum heart rate achieved
+  "exang",   # exercise induced angina, 1 = yes, 0 = no
+  "oldpeak", # ST depression induced by exercise relative to rest
+  "slope", # the slope of the peak exercise ST segment 
+  # 1 = upsloping 
+  # 2 = flat 
+  # 3 = downsloping 
+  "ca", # number of major vessels (0-3) colored by fluoroscopy
+  "thal", # this is short of thalium heart scan
+  # 3 = normal (no cold spots)
+  # 6 = fixed defect (cold spots during rest and exercise)
+  # 7 = reversible defect (when cold spots only appear during exercise)
+  "hd" # (the predicted attribute) - diagnosis of heart disease 
+  # 0 if less than or equal to 50% diameter narrowing
+  # 1 if greater than 50% diameter narrowing
+)
+```
+
+# Exploratory Data Analysis
+```{r}
+library(DataExplorer)
+config <- configure_report(
+add_plot_density=TRUE,
+add_plot_qq=TRUE,
+add_plot_bar=TRUE,
+add_plot_correlation=TRUE,
+add_plot_prcomp=TRUE,
+add_plot_boxplot=TRUE,
+add_plot_scatterplot=TRUE,
+introduce_args=list(),
+plot_intro_args=list(),
+plot_str_args=list(type="diagonal",fontSize=35,width=1000,margin=
+list(left=350,right=250)),
+plot_missing_args=list(),
+plot_histogram_args=list(),
+plot_density_args=list(),
+plot_qq_args=list(sampled_rows=1000L),
+plot_bar_args=list(),
+plot_correlation_args=list(cor_args=list(use="pairwise.complete.obs")),
+plot_prcomp_args=list(),
+plot_boxplot_args=list(data,
+                       by_value = scale_y_continuous),
+plot_scatterplot_args=list(sampled_rows=1000L),
+global_ggtheme=quote(theme_gray()),
+global_theme_config=list())
+
+create_report(train, config = config)
+```
+
+
+# First, replace "?"s with NAs.
+```{r}
+data[data == "?"] <- NA
+```
+
+
+# Add factors for variables that are factors and clean up the factors that had missing data
+```{r}
+data[data$sex == 0,]$sex <- "F"
+data[data$sex == 1,]$sex <- "M"
+data$sex <- as.factor(data$sex)
+
+data$cp <- as.factor(data$cp)
+data$fbs <- as.factor(data$fbs)
+data$restecg <- as.factor(data$restecg)
+data$exang <- as.factor(data$exang)
+data$slope <- as.factor(data$slope)
+
+
+## This next line replaces 0 and 1 with "Healthy" and "Unhealthy"
+data$hd <- ifelse(test=data$hd == 0, yes="Healthy", no="Unhealthy")
+data$hd <- as.factor(data$hd) # Now convert to a factor
+
+#create_report(data, config = config) #Check EDA again
+```
+
+
+# Addressing Variables that had Missing Values
+```{r}
+data$ca <- as.integer(data$ca) #Change to Interger since R sees it as text because of "NA"
+data$ca <- as.factor(data$ca)  #then convert the integers to factor levels (if it's a factor)
+
+data$thal <- as.integer(data$thal) # "thal" also had "?"s in it.
+data$thal <- as.factor(data$thal)
+```
+
+#Remove Rows with Missing Values or NA
+```{r}
+BigBoroughs <- BigBoroughs[complete.cases(BigBoroughs$OT.Hours),]
+```
+
+
+# Checking for Outliers
+```{r}
+library(dlookr)
+diagnose_report(BigBoroughs, output_format = "html")
+
+#Single Variable
+library(DescTools)
+Desc(noom$Ageinyears)
+```
+
+
+# Create Training, Validation, and Test Partitions
+```{R}
+# partition data
+set.seed(1)  # set seed for reproducing the partition
+set.seed(1234)
+ind <- sample(3, nrow(data), replace = T, prob = c(0.5, 0.3, 0.2))
+train <- data[ind==1,]
+valid <- data[ind==2,]
+test <- data[ind==3,]
+```
+
+# Subsetting data through split file if necessary
+```{r}
+#Split file based on Borough Location
+NYC_Split <- split(NYC_Fisc_Clean, NYC_Fisc_Clean$`Work Location Borough`)
+
+#Create datasets based on Borough location with the largest sample sizes
+BRONX<-NYC_Split[[2]]
+BROOKLYN<-NYC_Split[[3]]
+MANHATTAN<-NYC_Split[[7]]
+QUEENS<-NYC_Split[[11]]
+RICHMOND<-NYC_Split[[12]]
+WESTCHESTER<-NYC_Split[[16]]
+
+#Combine Split files into a single file with chosen Boroughs
+BigBoroughs <- rbind(BRONX, BROOKLYN, MANHATTAN, QUEENS, RICHMOND, WESTCHESTER)
+```
+
+
+# Log Transform Variables to Normalize Data
+```{r}
+BigBoroughs$`OT Hours` = log10(BigBoroughs$`OT Hours`)
+```
+
+
+# Convert to Z-scores if needed
+```{r}
+noom.t = scale(noom.t, center = TRUE, scale = TRUE)
+noom.t <- as.data.frame(noom.t) #Convert back to Data Frame
+```
+
+
+#View Data Set to Check Smallest and Largest Values
+```{r}
+View(data)
+```
+
+
+# Dummy Code Factors if Necessary
+```{r}
+library(dummies)
+data.new <- dummy.data.frame(data, sep = ".", all = FALSE)
+data2 <- cbind2(data, data.new) #Combine dummy coded and original datasets
+t(t(names(data2)))
+View(data.new)
+```
+
+
+#Trim White Space
+```{r}
+#Trim both left and right white space
+trimws(data2)
+```
+
+
+# Concatenate Columns
+```{r}
+data2$Age_Sex <- paste(data2$age, data2$sex, sep=' ')
+t(t(names(data2)))
+View(data2)
+```
+
+# Replace Values
+```{r}
+BigBoroughs$OT.Hours[BigBoroughs$OT.Hours == "-Inf"] <- ""
+```
